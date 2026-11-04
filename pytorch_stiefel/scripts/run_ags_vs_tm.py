@@ -27,7 +27,7 @@ def main() -> None:
         400.0 * torch.randn(samples, d, generator=generator, dtype=torch.float64),
     ]
     problem = StiefelPCAProblem(clients, r)
-    xgen = torch.Generator(device="cpu").manual_seed(args.seed + 1)
+    xgen = torch.Generator(device=device).manual_seed(args.seed + 1)
     X0 = problem.manifold.random_point(dtype=torch.float64, device=args.device, generator=xgen)
     probabilities = torch.ones(n_agents, dtype=torch.float64)
     optimal_cost = problem.exact_optimal_cost(X0)
