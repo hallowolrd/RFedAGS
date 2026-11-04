@@ -1,101 +1,68 @@
 # RFedAGS: PyTorch reproduction for Stiefel PCA
 
-This directory adds a PyTorch implementation alongside the original MATLAB/Manopt code. It does not modify or delete the MATLAB implementation.
+This directory contains a PyTorch implementation of the Stiefel/PCA experiments. The original MATLAB/Manopt files are retained unchanged.
 
-## 1. What the authors evaluated
+## 1. Six Stiefel experiment groups
 
-The paper and the MATLAB repository contain experiments on five geometric settings:
-
-| Geometry | Task | Data | Main purpose |
+| Group | MATLAB entry point | Python command | Main settings |
 |---|---|---|---|
-| Stiefel | Federated PCA | Synthetic Gaussian data, CIFAR-10 | Main comparison of RFedAGS with RFedAvg, RFedSVRG, RFedProj and ZO-RFedProj; scalability tests |
-| Hyperbolic | Hyperbolic structured prediction | WordNet mammals subtree | Compare prediction distance against RFedAvg and RFedSVRG |
-| SPD | Fréchet mean computation | PathMNIST-derived covariance matrices | Compare RFedAGS with RFedAvg and RFedSVRG |
-| Sphere | Principal eigenvector computation | MNIST | Comprehensive tests: aggregation bias, participation schemes, stragglers, data heterogeneity, local-step count, and algorithm comparisons |
-| Grassmann | Low-rank matrix completion | Synthetic data, MovieLens 1M | Compare RFedAGS with centralized RSD, RCG and LRBFGS; study the number of local updates |
+| 1. Main synthetic comparison | `PCAStief_Syn_40.m` | `python scripts/run_synthetic.py` | d=100, r=5, N=40, S=100, K=5, B=50, lr=0.006, 1000 rounds, 5 repeats |
+| 2. AGS vs tangent mean | `PCAStief_Syn_AGSvsTM.m` | `python scripts/run_ags_vs_tm.py` | d=50, r=1, N=2, S=60, K=50, B=60, lr=1e-7, 150 rounds, 1 run |
+| 3. Local sample-size sweep | `PCAStief_Syn_localdatasizeincreas.m` | `python scripts/run_scalability.py --mode samples` | N=100, S=400/800/1200/1600/2000, d=100, r=5, K=5, B=S/2, lr=0.02, 2500 rounds, 4 repeats |
+| 4. Client-count sweep | `PCAStief_Syn_numagentincreas.m` | `python scripts/run_scalability.py --mode agents` | N=60/80/100/150/200, S=1000, d=100, r=5, K=5, B=500, lr=0.02, 2500 rounds, 4 repeats |
+| 5. Stiefel dimension sweep | `PCAStief_Syn_mandimincreas.m` | `python scripts/run_scalability.py --mode dimension` | (d,r)=(1000,5)/(2000,5)/(2000,10)/(4000,5)/(4000,10), N=50, S=1000, K=5, B=500, lr=0.02, 2500 rounds, 4 repeats |
+| 6. CIFAR-10 | `PCAStief_CIFAR10.m` | `python scripts/run_cifar10.py` | d=3072, r=4, N=50, S=1000, K=5, B=500, lr=3e-5, 600 rounds, 2 repeats |
 
-The Stiefel part also has two supplementary experiment groups in the MATLAB repository:
+All synthetic scripts use float64 by default to match MATLAB's default numeric precision. Each repeated run shares its experiment's data, initialization and client participation probabilities; only the stochastic local sampling stream changes. Both per-run curves and their arithmetic mean are saved.
 
-- AGS versus tangent-mean aggregation: a two-client synthetic example with d=50, r=1, 60 samples per client and K=50.
-- Scalability: increase the number of clients, local samples per client, and Stiefel ambient/subspace dimensions.
+## 2. MATLAB discrepancies handled explicitly
 
-The paper's main Stiefel PCA settings are:
+The Python reproduction follows the intended experiment design rather than silently copying two apparent MATLAB copy/paste/data-generation mistakes:
 
-| Setting | Synthetic | CIFAR-10 |
-|---|---:|---:|
-| Ambient dimension d | 100 | 3072 |
-| Subspace dimension r | 5 | 4 |
-| Number of clients N | 40 | 50 |
-| Samples per client S | 100 | 1000 |
-| Local steps K | 5 | 5 |
-| Batch size B | 50 | 500 |
-| Local step size alpha | 6e-3 | 3e-5 |
-| Participation | p_i sampled from U(0,1) | p_i sampled from U(0,1) |
+1. **Client-count sweep:** the MATLAB script allocates 200000 rows but fills only 200 x 500 = 100000 rows, while it later assigns 1000 rows to each client. The Python port creates a complete master population of 200 clients with 1000 valid samples each. It uses the fixed population scale i/200 and takes the first N clients for each case. This is an intentional repair, not a bitwise reproduction of the faulty MATLAB data matrix.
+2. **Dimension sweep:** the second MATLAB block is labelled (d,r)=(2000,5) but assigns d=1000, r=5 again. The Python port uses the labelled/intended setting (2000,5). This is an intentional correction.
+3. **Sample-size sweep:** one fixed master dataset with 100 clients x 2000 samples is generated once. Every S case takes the first S samples from each client's same master data.
+4. **Dimension sweep:** one fixed master dataset with 50 clients x 1000 samples x 4000 features is generated once. Smaller d cases take the first d feature columns.
+5. **CIFAR-10:** the MATLAB repository references `CIFAR10_train_50_noniid_slight.mat`, but that preprocessed file is not included in the public repository. The Python script accepts the original file through `--mat-file` (variable name `data`, shape 50000x3072 or 3072x50000). Without it, the script uses a deterministic torchvision label-shard fallback; this is not the original client partition and must be reported as such.
 
-The synthetic MATLAB entry point is PCAStief_Syn_40.m (1000 communication rounds, evaluation every 10 rounds, five seeds). The CIFAR-10 entry point is PCAStief_CIFAR10.m (600 rounds, evaluation every 10 rounds, two seeds).
+## 3. Objective reference and runtime interpretation
 
-## 2. What is implemented here
+For PCA, the global optimum is available from the top-r eigenvalues of the average covariance matrix. The Python scripts use this exact spectral reference by default to compute optimality gaps. The MATLAB scripts instead call Riemannian L-BFGS to estimate the reference value, so the reference computation differs while the mathematical optimum is the same.
 
-The current PyTorch port focuses on the Stiefel PCA experiments, consistent with the initial reproduction scope. It contains:
+The PyTorch simulator executes clients sequentially. Its elapsed time is wall-clock time for this simulator, not MATLAB's reported maximum parallel-client runtime. Compare objective/optimality-gap curves first; do not treat runtime curves as hardware-equivalent.
 
-- RFedAGS with local Riemannian SGD, arbitrary Bernoulli participation and online frequency estimates.
-- RFedAvg with inverse-QR tangent-mean aggregation.
-- RFedSVRG with the local variance-reduced update from the MATLAB code.
-- RFedProj and ZO-RFedProj with polar projection.
-- Synthetic Gaussian data generation and a FedAvg-style label-sorted non-IID CIFAR-10 partition.
-- Unit tests for the Stiefel geometry, inverse QR retraction and RFedAGS update.
+For CIFAR-10, the exact 3072x3072 eigendecomposition can be costly. Use `--skip-reference` to omit it; optimality-gap entries will then be NaN.
 
-The Sphere, Grassmann, SPD and hyperbolic experiments are analyzed above but are not yet ported in this first PyTorch module.
-
-## 3. Geometry and algorithm correspondence
-
-The implementation follows the Stiefel factory used in the authors' Manopt code:
-
-- Manifold: St(r,d) = {X in R^(d x r): X.T X = I}.
-- Metric: Euclidean/Frobenius metric.
-- Riemannian gradient: project the Euclidean gradient using P_X(G) = G - X sym(X.T G).
-- Retraction: thin QR retraction with the diagonal sign convention used by Manopt qr_unique.
-- Vector transport: projection onto the tangent space at the destination point, P_Y(U).
-- RFedAGS local step: eta = -alpha * grad f_i(X_local; batch), followed by QR retraction.
-- Gradient stream: add the first local step directly; transport subsequent local steps back to the round's starting tangent space.
-- Server aggregation: with frequency estimates q_i, use X_next = R_X((1/N) sum_{i in S_t} zeta_i/q_i).
-
-This follows RFedAGSP.m and ConstructRFLPCAProb_St_.m. The paper's Stiefel experiments use local RSGD rather than the optional local RSVRG mode in RFedAGSP.m.
-
-For PCA, the global optimum is available from the top-r eigenvectors of the average covariance matrix. This implementation can therefore use an exact spectral objective reference instead of the numerical Riemannian L-BFGS reference used by the MATLAB scripts.
-
-## 4. Important reproduction notes
-
-1. The repository does not contain the preprocessed file CIFAR10_train_50_noniid_slight.mat referenced by the MATLAB script. The PyTorch loader downloads CIFAR-10 through torchvision and creates a label-sorted shard partition with two shards per client, following the McMahan/FedAvg non-IID partitioning convention. This is a reproducible substitute, but it cannot guarantee byte-for-byte equality with the missing MATLAB partition.
-2. CIFAR-10 images are normalized to [0,1] by default. Use --no-normalize if the MATLAB data file you obtain stores raw 0-255 pixels. The step size is scale-sensitive.
-3. MATLAB reports the maximum active-client runtime as the local parallel time. This PyTorch simulator executes clients sequentially and reports actual process wall-clock time. Compare objective/gradient curves first; do not treat the runtime curves as hardware-equivalent.
-4. The original RFedAGSP.m accumulates the gradient-sample counter using only the last active client's counter. This port counts all active clients' sampled examples.
-5. The synthetic data generator follows the MATLAB code's client-i scale i/N. The paper describes the corresponding heterogeneous Gaussian covariance family.
-
-## 5. Install and run
+## 4. Install and run
 
 From this directory:
 
-    python -m pip install -r requirements.txt
+```bash
+python -m pip install -r requirements.txt
+python -m unittest discover -s tests -v
+```
 
-Run the main synthetic Stiefel PCA experiment:
+Run the six experiments:
 
-    python scripts/run_synthetic.py
+```bash
+python scripts/run_synthetic.py
+python scripts/run_ags_vs_tm.py
+python scripts/run_scalability.py --mode samples
+python scripts/run_scalability.py --mode agents
+python scripts/run_scalability.py --mode dimension
+python scripts/run_cifar10.py --data-root ../data
+```
 
-Run all five methods on the synthetic experiment:
+To use the author's preprocessed CIFAR-10 data, when you have obtained it:
 
-    python scripts/run_synthetic.py --algorithms rfedags,rfedavg,rfedsvrg,rfedproj,zo-rfedproj
+```bash
+python scripts/run_cifar10.py --mat-file /path/to/CIFAR10_train_50_noniid_slight.mat
+```
 
-Run RFedAGS on CIFAR-10:
+Each experiment writes `metrics.csv` and a plot. Repeated runs are labelled individually; the mean curve has a `-mean` suffix. Scale sweeps write each case to its own directory and an aggregate summary under `results/scalability/<mode>/summary`.
 
-    python scripts/run_cifar10.py --data-root ../data --device cuda
+## 5. Scope and algorithm notes
 
-For CIFAR-10, enable the exact spectral reference (this requires a 3072 by 3072 eigendecomposition):
+Implemented baselines: RFedAGS, RFedAvg, RFedSVRG, RFedProj and ZO-RFedProj. The Stiefel geometry uses the embedded Euclidean/Frobenius metric, tangent projection, thin QR retraction, and projection vector transport.
 
-    python scripts/run_cifar10.py --data-root ../data --device cuda --compute-reference
-
-Run the tests:
-
-    python -m unittest discover -s tests -v
-
-Metrics are written to the selected output directory as metrics.csv and optimality_gap.png.
+The Sphere, Grassmann, SPD and hyperbolic experiments are not part of this Stiefel-only Python port.
