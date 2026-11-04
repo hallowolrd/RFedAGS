@@ -76,7 +76,7 @@ def main() -> None:
 
     problem = StiefelPCAProblem(clients, r)
     device = torch.device(args.device)
-    xgen = torch.Generator(device="cpu").manual_seed(args.seed + 1)
+    xgen = torch.Generator(device=device).manual_seed(args.seed + 1)
     X0 = problem.manifold.random_point(dtype=dtype, device=device, generator=xgen)
     pgen = torch.Generator(device="cpu").manual_seed(args.seed + 2)
     probabilities = torch.rand(n_agents, generator=pgen, dtype=torch.float64)
