@@ -68,7 +68,7 @@ def main() -> None:
             clients = [master[i][:samples, :d].clone() for i in range(n_agents)]
 
         problem = StiefelPCAProblem(clients, r)
-        xgen = torch.Generator(device="cpu").manual_seed(args.seed + 1000 + case_id)
+        xgen = torch.Generator(device=device).manual_seed(args.seed + 1000 + case_id)
         X0 = problem.manifold.random_point(dtype=dtype, device=device, generator=xgen)
         pgen = torch.Generator(device="cpu").manual_seed(args.seed + 2000)
         probabilities = torch.rand(max_n, generator=pgen, dtype=torch.float64)[:n_agents]
