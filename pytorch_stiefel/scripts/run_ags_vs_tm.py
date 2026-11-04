@@ -20,44 +20,29 @@ def main() -> None:
     parser.add_argument("--output-dir", default="results/ags_vs_tm")
     args = parser.parse_args()
 
-    # Reproduce PCAStief_Syn_AGSvsTM.m: two clients with strongly different
-    # Gaussian scales, d=50, r=1 and 60 samples per client.
     n_agents, samples, d, r = 2, 60, 50, 1
-    generator = torch.Generator(device="cpu").manual_seed(args.seed + 1)
+    generator = torch.Generator(device="cpu").manual_seed(args.seed)
     clients = [
-        0.5 * torch.randn(samples, d, generator=generator),
-        400.0 * torch.randn(samples, d, generator=generator),
+        0.5 * torch.randn(samples, d, generator=generator, dtype=torch.float64),
+        400.0 * torch.randn(samples, d, generator=generator, dtype=torch.float64),
     ]
     problem = StiefelPCAProblem(clients, r)
-    x_generator = torch.Generator(device="cpu").manual_seed(args.seed + 2)
-    X0 = problem.manifold.random_point(
-        dtype=torch.float64, device=args.device, generator=x_generator
-    )
+    xgen = torch.Generator(device="cpu").manual_seed(args.seed + 1)
+    X0 = problem.manifold.random_point(dtype=torch.float64, device=args.device, generator=xgen)
     probabilities = torch.ones(n_agents, dtype=torch.float64)
     optimal_cost = problem.exact_optimal_cost(X0)
-
     common = dict(
-        rounds=args.rounds,
-        local_steps=50,
-        batch_size=samples,
-        learning_rate=1e-7,
-        probabilities=probabilities,
-        check_every=10,
-        seed=args.seed + 3,
-        optimal_cost=optimal_cost,
+        rounds=args.rounds, local_steps=50, batch_size=samples,
+        learning_rate=1e-7, probabilities=probabilities, check_every=10,
+        seed=args.seed + 2, optimal_cost=optimal_cost,
     )
-    ags = run_rfedags(
-        problem, X0, participation_mode="full", **common
-    )
+    ags = run_rfedags(problem, X0, participation_mode="full", **common)
     tangent_mean = run_rfedavg(problem, X0, **common)
     save_histories([ags, tangent_mean], Path(args.output_dir))
-
-    print(f"Spectral optimum: {optimal_cost.item():.8e}")
+    print(f"Reference optimum: {optimal_cost.item():.10e}")
     for history in (ags, tangent_mean):
-        print(
-            f"{history.algorithm}: final gap={history.gaps[-1]:.8e}, "
-            f"orthogonality error={problem.manifold.orthogonality_error(history.final_point).item():.3e}"
-        )
+        print(f"{history.algorithm}: final gap={history.gaps[-1]:.8e}, "
+              f"orthogonality error={problem.manifold.orthogonality_error(history.final_point).item():.3e}")
 
 
 if __name__ == "__main__":
