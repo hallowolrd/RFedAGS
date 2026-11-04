@@ -11,13 +11,18 @@ def make_synthetic_pca_data(
     d: int = 100,
     *,
     seed: int = 1,
-    dtype: torch.dtype = torch.float32,
+    dtype: torch.dtype = torch.float64,
 ) -> list[torch.Tensor]:
-    """Generate the heterogeneous Gaussian data used in PCAStief_Syn_40.m.
+    """Generate heterogeneous Gaussian client data.
 
-    MATLAB scales client i's standard Gaussian samples by i/N, so the
-    covariance scales as (i/N)^2 I.
+    Client i (one-based) uses scale i / n_agents, matching the synthetic
+    MATLAB generators when n_agents is the full, fixed population. For
+    scalability sweeps, generate the largest population once and slice the
+    returned client list or each client's rows/columns; do not regenerate
+    each case independently.
     """
+    if n_agents < 1 or samples_per_agent < 1 or d < 1:
+        raise ValueError("n_agents, samples_per_agent and d must be positive.")
     generator = torch.Generator(device="cpu").manual_seed(seed)
     clients = []
     for i in range(1, n_agents + 1):
@@ -36,7 +41,7 @@ def partition_noniid_by_label(
     *,
     seed: int = 0,
 ) -> list[torch.Tensor]:
-    """FedAvg-style label-sorted shard partition used for non-IID CIFAR-10.
+    """FedAvg-style label-sorted shard partition used as a CIFAR-10 fallback.
 
     Images must be row-wise flattened [num_images, d]. Each client receives
     shards_per_client consecutive label-sorted shards.
@@ -62,7 +67,6 @@ def partition_noniid_by_label(
         indices = torch.cat([shards[j] for j in chosen])
         clients.append(images.index_select(0, indices).contiguous())
 
-    # Include any remainder in the final client's local dataset.
     used = shard_size * n_shards
     if used < images.shape[0]:
         clients[-1] = torch.cat([clients[-1], images[order[used:]]], dim=0)
@@ -77,8 +81,13 @@ def load_cifar10_noniid(
     normalize: bool = True,
     download: bool = True,
     seed: int = 0,
+    dtype: torch.dtype = torch.float64,
 ) -> list[torch.Tensor]:
-    """Load CIFAR-10 training images and create non-IID client shards."""
+    """Load CIFAR-10 training images and create non-IID client shards.
+
+    This is a deterministic substitute for the unavailable MATLAB .mat
+    partition. Pass the original .mat data to run_cifar10.py when available.
+    """
     try:
         from torchvision.datasets import CIFAR10
     except Exception as exc:
@@ -90,7 +99,7 @@ def load_cifar10_noniid(
     # CIFAR10 stores uint8 NHWC images. Flattening order differs from MATLAB's
     # column-major reshape only by a fixed coordinate permutation, which leaves
     # the PCA objective and its spectrum unchanged.
-    images = torch.as_tensor(dataset.data.copy(), dtype=torch.float32)
+    images = torch.as_tensor(dataset.data.copy(), dtype=dtype)
     images = images.reshape(images.shape[0], -1)
     if normalize:
         images = images / 255.0
