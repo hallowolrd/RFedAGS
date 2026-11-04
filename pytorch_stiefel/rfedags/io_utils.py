@@ -7,6 +7,42 @@ from typing import Iterable
 from .algorithms import RunHistory
 
 
+def mean_histories(
+    histories: Iterable[RunHistory], *, algorithm: str | None = None
+) -> RunHistory:
+    """Average the recorded curves from repeated runs with matching checkpoints."""
+    histories = list(histories)
+    if not histories:
+        raise ValueError("At least one run history is required.")
+    reference_iterations = histories[0].iterations
+    if any(history.iterations != reference_iterations for history in histories[1:]):
+        raise ValueError("Repeated runs must use identical checkpoint iterations.")
+
+    def average(field: str) -> list[float]:
+        columns = zip(*(getattr(history, field) for history in histories))
+        return [
+            sum(float(value) for value in column) / len(histories)
+            for column in columns
+        ]
+
+    return RunHistory(
+        algorithm=algorithm or histories[0].algorithm,
+        iterations=list(reference_iterations),
+        objectives=average("objectives"),
+        gaps=average("gaps"),
+        grad_norms=average("grad_norms"),
+        elapsed_seconds=average("elapsed_seconds"),
+        active_clients=[
+            int(round(value)) for value in average("active_clients")
+        ],
+        final_point=None,
+        participation_counts=None,
+        gradient_samples=int(
+            round(sum(history.gradient_samples for history in histories) / len(histories))
+        ),
+    )
+
+
 def save_histories(histories: Iterable[RunHistory], output_dir: str | Path) -> None:
     histories = list(histories)
     output = Path(output_dir)
