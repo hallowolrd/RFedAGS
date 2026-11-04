@@ -4,6 +4,7 @@ import torch
 
 from rfedags import StiefelManifold, StiefelPCAProblem, run_rfedags
 from rfedags.data import make_synthetic_pca_data
+from rfedags.io_utils import mean_histories
 
 
 class StiefelCoreTests(unittest.TestCase):
@@ -37,26 +38,40 @@ class StiefelCoreTests(unittest.TestCase):
 
     def test_rfedags_smoke(self):
         clients = make_synthetic_pca_data(
-            n_agents=4, samples_per_agent=24, d=12, seed=9
+            n_agents=4, samples_per_agent=24, d=12, seed=9, dtype=self.dtype
         )
         problem = StiefelPCAProblem(clients, r=3)
         X0 = problem.manifold.random_point(dtype=self.dtype)
         result = run_rfedags(
-            problem,
-            X0,
-            rounds=4,
-            local_steps=2,
-            batch_size=8,
-            learning_rate=1e-3,
-            probabilities=torch.ones(4, dtype=torch.float64),
-            participation_mode="frequency",
-            check_every=1,
-            seed=11,
+            problem, X0, rounds=4, local_steps=2, batch_size=8,
+            learning_rate=1e-3, probabilities=torch.ones(4, dtype=torch.float64),
+            participation_mode="frequency", check_every=1, seed=11,
         )
         self.assertEqual(result.final_point.shape, (12, 3))
         self.assertEqual(len(result.iterations), 5)
         self.assertTrue(torch.isfinite(result.final_point).all())
         self.assertLess(problem.manifold.orthogonality_error(result.final_point).item(), 1e-9)
+
+    def test_fixed_master_data_can_be_sliced_for_sample_sweep(self):
+        master = make_synthetic_pca_data(
+            n_agents=3, samples_per_agent=20, d=8, seed=123, dtype=self.dtype
+        )
+        short = [client[:5] for client in master]
+        long = [client[:10] for client in master]
+        self.assertTrue(torch.equal(short[1], long[1][:5]))
+        self.assertEqual(short[0].dtype, torch.float64)
+
+    def test_mean_history(self):
+        from rfedags.algorithms import RunHistory
+        a = RunHistory(algorithm="test", iterations=[0, 1], objectives=[4.0, 2.0],
+                       gaps=[3.0, 1.0], grad_norms=[2.0, 1.0],
+                       elapsed_seconds=[0.0, 2.0], active_clients=[0, 2])
+        b = RunHistory(algorithm="test", iterations=[0, 1], objectives=[6.0, 4.0],
+                       gaps=[5.0, 3.0], grad_norms=[4.0, 3.0],
+                       elapsed_seconds=[0.0, 4.0], active_clients=[0, 4])
+        mean = mean_histories([a, b], algorithm="mean")
+        self.assertEqual(mean.objectives, [5.0, 3.0])
+        self.assertEqual(mean.gaps, [4.0, 2.0])
 
 
 if __name__ == "__main__":
