@@ -1,0 +1,28 @@
+Reference optimum (exact PCA spectrum): -2.4062012968e+00
+Config: d=100, r=5, N=40, S=100, K=5, B=50, alpha=0.006, rounds=1000, repeats=5
+Running rfedags: repeat 1/5
+Running rfedags: repeat 2/5
+Running rfedags: repeat 3/5
+Running rfedags: repeat 4/5
+Running rfedags: repeat 5/5
+Running rfedavg: repeat 1/5
+Running rfedavg: repeat 2/5
+Running rfedavg: repeat 3/5
+Running rfedavg: repeat 4/5
+Running rfedavg: repeat 5/5
+Running rfedsvrg: repeat 1/5
+Running rfedsvrg: repeat 2/5
+Running rfedsvrg: repeat 3/5
+Running rfedsvrg: repeat 4/5
+Running rfedsvrg: repeat 5/5
+Running rfedproj: repeat 1/5
+Running rfedproj: repeat 2/5
+Running rfedproj: repeat 3/5
+Running rfedproj: repeat 4/5
+Running rfedproj: repeat 5/5
+Running zo-rfedproj: repeat 1/5
+Running zo-rfedproj: repeat 2/5
+Running zo-rfedproj: repeat 3/5
+Running zo-rfedproj: repeat 4/5
+Running zo-rfedproj: repeat 5/5
+Saved individual runs and mean curves to results/synthetic_main
