@@ -19,6 +19,7 @@ def main() -> None:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-dir", default="results/ags_vs_tm")
     args = parser.parse_args()
+    device = torch.device(args.device)
 
     n_agents, samples, d, r = 2, 60, 50, 1
     generator = torch.Generator(device="cpu").manual_seed(args.seed)
@@ -28,7 +29,7 @@ def main() -> None:
     ]
     problem = StiefelPCAProblem(clients, r)
     xgen = torch.Generator(device=device).manual_seed(args.seed + 1)
-    X0 = problem.manifold.random_point(dtype=torch.float64, device=args.device, generator=xgen)
+    X0 = problem.manifold.random_point(dtype=torch.float64, device=device, generator=xgen)
     probabilities = torch.ones(n_agents, dtype=torch.float64)
     optimal_cost = problem.exact_optimal_cost(X0)
     common = dict(
